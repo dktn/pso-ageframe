@@ -1,4 +1,4 @@
 .stack-work
-framework.cabal
+pso-ageframe.cabal
 *.html
 *.css
