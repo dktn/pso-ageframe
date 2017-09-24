@@ -38,5 +38,6 @@ main = do
     counter <- runEkg
     cfg     <- getConfig
     runPlatform cfg
+    inc counter
     -- test counter
     -- ben
