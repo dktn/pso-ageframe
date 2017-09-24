@@ -23,9 +23,8 @@ getConfig = do
 
 runEkg :: IO Counter
 runEkg = do
-    ekg     <- forkServer "localhost" 8000
-    counter <- getCounter "iterations" ekg
-    return counter
+    ekg <- forkServer "localhost" 8000
+    getCounter "iterations" ekg
 
 test :: Counter -> IO ()
 test counter = loop where

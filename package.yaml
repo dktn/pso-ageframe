@@ -12,10 +12,10 @@ ghc-options:         -Wall
 dependencies:
   - base >= 4.7 && < 5
   - deepseq
-  # - directory
-  - filepath
   - text
   - containers
+  # - directory
+  - filepath
   # - unordered-containers
   - yaml
   - criterion
@@ -46,7 +46,7 @@ executables:
 tests:
   framework-test:
     # cpp-options: -DTEST
-    main: Tests.hs
+    main: Main.hs
     source-dirs:
       - test
       - src

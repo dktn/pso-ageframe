@@ -1,1 +1,4 @@
 .stack-work
+framework.cabal
+*.html
+*.css
