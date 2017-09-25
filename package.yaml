@@ -12,6 +12,9 @@ ghc-options:         -Wall
 dependencies:
   - base >= 4.7 && < 5
   - vector
+  - mwc-random
+  - primitive
+
   - deepseq
   - text
   - containers

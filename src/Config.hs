@@ -7,13 +7,15 @@ module Config
     ) where
 
 import           GHC.Generics
-import           Data.Text         (Text)
-import           System.FilePath   (FilePath)
+import           Data.Text (Text)
+import           System.FilePath (FilePath)
+import           GHC.Word (Word32)
 
 import           Data.Yaml
 
 
 data Config = Config { input      :: Text
+                     , seed       :: Word32
                      , iterations :: Maybe Integer
                      } deriving (Eq, Show, Generic, FromJSON)
 
@@ -24,7 +26,7 @@ decodeYaml :: FromJSON a => FilePath -> IO (Either String a)
 decodeYaml file = do
     result <- decodeFileEither file
     return $ either (Left . errToString) Right result
-    where
+      where
         errToString err = file ++ case err of
             AesonException e                          -> ": " ++ e
             InvalidYaml (Just (YamlException s))      -> ": " ++ s
@@ -32,5 +34,6 @@ decodeYaml file = do
                                                       ++ ":"  ++ show yamlColumn
                                                       ++ ": " ++ yamlProblem
                                                       ++ " "  ++ yamlContext
-                where YamlMark{..} = yamlProblemMark
+              where
+                YamlMark{..} = yamlProblemMark
             _                                         -> ": " ++ show err
