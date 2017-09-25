@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DeriveAnyClass #-}
 
 module Config
     ( loadConfig
@@ -14,10 +15,7 @@ import           Data.Yaml
 
 data Config = Config { input      :: Text
                      , iterations :: Maybe Integer
-                     } deriving (Eq, Show, Generic)
-
-instance FromJSON Config
-
+                     } deriving (Eq, Show, Generic, FromJSON)
 
 loadConfig :: FilePath -> IO (Either String Config)
 loadConfig = decodeYaml

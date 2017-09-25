@@ -39,5 +39,6 @@ main = do
     cfg     <- getConfig
     runPlatform cfg
     inc counter
+    putStrLn "Exited."
     -- test counter
     -- ben

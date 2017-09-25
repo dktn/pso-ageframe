@@ -11,6 +11,7 @@ ghc-options:         -Wall
 
 dependencies:
   - base >= 4.7 && < 5
+  - vector
   - deepseq
   - text
   - containers
@@ -25,7 +26,7 @@ library:
 
 default-extensions:
   - OverloadedStrings
-  - NoMonomorphismRestriction
+  # - NoMonomorphismRestriction
   - DeriveGeneric
 
 executables:
@@ -35,13 +36,21 @@ executables:
     dependencies:
       - pso-ageframe
       - ekg
-    ghc-options:      -threaded -rtsopts -with-rtsopts=-N -with-rtsopts=-T
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+      - -with-rtsopts=-T
   pso-ageframe-bench:
     main:             Benchmark.hs
     source-dirs:      bench
     dependencies:
       - pso-ageframe
-    ghc-options:      -threaded -rtsopts -with-rtsopts=-N -with-rtsopts=-T
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
+      - -with-rtsopts=-T
 
 tests:
   pso-ageframe-test:
@@ -63,4 +72,7 @@ tests:
       # - interpolate
       # - aeson-qq
       # - aeson >= 0.10
-    ghc-options: -threaded -rtsopts -with-rtsopts=-N
+    ghc-options:
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
