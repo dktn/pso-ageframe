@@ -1,4 +1,4 @@
 input: data1.txt
 seed: 42
-population: 20
+population: 10
 iterations: 100

@@ -8,5 +8,5 @@ import           PSO
 runPlatform :: Config -> IO ()
 runPlatform cfg = do
     putStrLn $ show cfg
-    test1 cfg
-    test2 cfg
+    -- testExplicitGen cfg
+    test cfg
