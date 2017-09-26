@@ -3,9 +3,10 @@ module Platform
     ) where
 
 import           Config (Config)
-import           PSO (test)
+import           PSO
 
 runPlatform :: Config -> IO ()
 runPlatform cfg = do
     putStrLn $ show cfg
-    test cfg
+    test1 cfg
+    test2 cfg

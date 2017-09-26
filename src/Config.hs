@@ -16,6 +16,7 @@ import           Data.Yaml
 
 data Config = Config { input      :: Text
                      , seed       :: Word32
+                     , population :: Int
                      , iterations :: Maybe Integer
                      } deriving (Eq, Show, Generic, FromJSON)
 
