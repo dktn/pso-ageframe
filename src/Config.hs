@@ -17,7 +17,7 @@ import           Data.Yaml
 data Config = Config { input      :: Text
                      , seed       :: Word32
                      , dimension  :: Int
-                     , population :: Int
+                     , swarmSize  :: Int
                      , iterations :: Maybe Integer
                      } deriving (Eq, Show, Generic, FromJSON)
 

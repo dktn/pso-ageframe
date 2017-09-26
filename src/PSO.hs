@@ -16,24 +16,24 @@ import           Config (Config())
 import qualified Config
 import qualified Functions
 
-type Particle = VU.Vector Double
-type Swarm    = V.Vector Particle
+newtype Particle = Particle { position  :: VU.Vector Double  } deriving (Show)
+newtype Swarm    = Swarm    { particles :: V.Vector Particle } deriving (Show)
 
 genParticle :: (PrimMonad m, MonadPrim m) => Int -> Double -> Double -> Rand m Particle
-genParticle dim from to = VU.replicateM dim $ RM.uniformR (from, to)
+genParticle dim from to = fmap Particle $ VU.replicateM dim $ RM.uniformR (from, to)
 
-genPopulation :: (PrimMonad m, MonadPrim m) => Int -> Int -> Double -> Double -> Rand m Swarm
-genPopulation n dim from to = V.replicateM n $ genParticle dim from to
+genSwarm :: (PrimMonad m, MonadPrim m) => Int -> Int -> Double -> Double -> Rand m Swarm
+genSwarm n dim from to = fmap Swarm $ V.replicateM n $ genParticle dim from to
 
 optimize :: (PrimMonad m, MonadPrim m) => Swarm -> Integer -> Rand m Particle
-optimize population iterations = do
-    return $ V.head population
+optimize swarm iterations = do
+    return $ V.head $ particles swarm
 
 test :: Config -> IO ()
 test cfg = do
     let genSeed = RM.toSeed . VU.singleton $ Config.seed cfg
     result <- RM.runWithSeed genSeed $ do
-        initialPopulation <- genPopulation (Config.population cfg) (Config.dimension cfg) (-5.12) 5.12
-        liftIO $ putStrLn $ "Initial population:\n" <> show initialPopulation
-        optimize initialPopulation $ fromMaybe 100 $ Config.iterations cfg
+        initialSwarm <- genSwarm (Config.swarmSize cfg) (Config.dimension cfg) (-5.12) 5.12
+        liftIO $ putStrLn $ "Initial swarm:\n" <> show initialSwarm
+        optimize initialSwarm $ fromMaybe 100 $ Config.iterations cfg
     putStrLn $ "Result:\n" <> show result
