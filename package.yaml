@@ -16,6 +16,7 @@ dependencies:
   - mwc-random
   - mwc-random-monad
   - monad-primitive
+  - data-default
 
   - deepseq
   - text
