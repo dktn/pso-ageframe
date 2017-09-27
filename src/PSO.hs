@@ -1,3 +1,5 @@
+{-# LANGUAGE ConstraintKinds #-}
+
 module PSO where
 
 import qualified Data.Vector as V
@@ -15,6 +17,10 @@ import           Data.Monoid ((<>))
 import           Config (Config())
 import qualified Config
 import qualified Functions
+
+-- TODO:
+-- pretty printing, default vect, initialize globals
+-- what velocity, velocity changes, global propagation
 
 newtype Position = Position
     { unPos :: VU.Vector Double
@@ -41,17 +47,25 @@ newtype Swarm = Swarm
     { particles :: V.Vector Particle
     } deriving (Show)
 
-genParticle :: (PrimMonad m, MonadPrim m) => Int -> Double -> Double -> Rand m Particle
+type RandMonad m = (PrimMonad m, MonadPrim m)
+
+genPosition :: (RandMonad m) => Int -> Double -> Double -> Rand m Position
+genPosition dim from to = fmap Position $ VU.replicateM dim $ RM.uniformR (from, to)
+
+genVelocity :: (RandMonad m) => Int -> Double -> Double -> Rand m Velocity
+genVelocity dim from to = fmap Velocity $ VU.replicateM dim $ RM.uniformR (from, to)
+
+genParticle :: (RandMonad m) => Int -> Double -> Double -> Rand m Particle
 genParticle dim from to = do
-    position <- fmap Position $ VU.replicateM dim $ RM.uniformR (from, to)
-    velocity <- fmap Velocity $ VU.replicateM dim $ RM.uniformR (from, to)
+    position <- genPosition dim from to
+    velocity <- genVelocity dim (from / 100.0) (to / 100.0)
     let bestValue = Value 10000.0
     return $ Particle position velocity position bestValue position bestValue
 
-genSwarm :: (PrimMonad m, MonadPrim m) => Int -> Int -> Double -> Double -> Rand m Swarm
+genSwarm :: (RandMonad m) => Int -> Int -> Double -> Double -> Rand m Swarm
 genSwarm n dim from to = fmap Swarm $ V.replicateM n $ genParticle dim from to
 
-optimize :: (PrimMonad m, MonadPrim m) => Swarm -> Integer -> Rand m Particle
+optimize :: (RandMonad m) => Swarm -> Integer -> Rand m Particle
 optimize swarm iterations = do
     return $ V.head $ particles swarm
 
