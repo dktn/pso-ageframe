@@ -19,9 +19,7 @@ import           Data.Monoid ((<>))
 
 -- import           Text.Pretty.Simple (pShow)
 -- import           Text.Show.Pretty (ppShow)
-import           Text.Show.Pretty (ppDoc)
-import           Text.PrettyPrint (renderStyle, Style(..), Mode(..))
-
+import           Pretty (ppShow)
 import           Config (Config())
 import qualified Config
 import qualified Functions
@@ -57,30 +55,25 @@ newtype Swarm = Swarm
 
 type RandMonad m = (PrimMonad m, MonadPrim m)
 
-genPosition :: (RandMonad m) => Int -> Double -> Double -> Rand m Position
+genPosition :: RandMonad m => Int -> Double -> Double -> Rand m Position
 genPosition dim from to = fmap Position $ VU.replicateM dim $ RM.uniformR (from, to)
 
-genVelocity :: (RandMonad m) => Int -> Double -> Double -> Rand m Velocity
+genVelocity :: RandMonad m => Int -> Double -> Double -> Rand m Velocity
 genVelocity dim from to = fmap Velocity $ VU.replicateM dim $ RM.uniformR (from, to)
 
-genParticle :: (RandMonad m) => Int -> Double -> Double -> Rand m Particle
+genParticle :: RandMonad m => Int -> Double -> Double -> Rand m Particle
 genParticle dim from to = do
     position <- genPosition dim from to
     velocity <- genVelocity dim (from / 100.0) (to / 100.0)
     let bestValue = Value 10000.0
     return $ Particle position velocity position bestValue position bestValue
 
-genSwarm :: (RandMonad m) => Int -> Int -> Double -> Double -> Rand m Swarm
+genSwarm :: RandMonad m => Int -> Int -> Double -> Double -> Rand m Swarm
 genSwarm n dim from to = fmap Swarm $ V.replicateM n $ genParticle dim from to
 
-optimize :: (RandMonad m) => Swarm -> Integer -> Rand m Particle
+optimize :: RandMonad m => Swarm -> Integer -> Rand m Particle
 optimize swarm iterations = do
     return $ V.head $ particles swarm
-
-ppShow :: Show a => a -> String
-ppShow = renderStyle wideStyle . ppDoc
-  where
-    wideStyle = Style PageMode 238 1.5
 
 test :: Config -> IO ()
 test cfg = do
