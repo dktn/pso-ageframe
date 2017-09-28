@@ -17,6 +17,10 @@ dependencies:
   - mwc-random-monad
   - monad-primitive
   - data-default
+  # - pretty-simple
+  - pretty-show
+  - GenericPretty
+  # - generic-deriving
 
   - deepseq
   - text
