@@ -1,6 +1,5 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveGeneric #-}
 
 module PSO where
 
@@ -19,9 +18,9 @@ import           Data.Monoid ((<>))
 -- import qualified Data.Text.Lazy as L
 
 -- import           Text.Pretty.Simple (pShow)
-import           Text.Show.Pretty (ppShow)
-import           Text.PrettyPrint.GenericPretty (pp, pretty, Out(..), Generic)
-
+-- import           Text.Show.Pretty (ppShow)
+import           Text.Show.Pretty (ppDoc)
+import           Text.PrettyPrint (renderStyle, Style(..), Mode(..))
 
 import           Config (Config())
 import qualified Config
@@ -33,37 +32,28 @@ import qualified Functions
 
 newtype Position = Position
     { unPos :: VU.Vector Double
-    } deriving (Show, Generic)
+    } deriving (Show)
 
 newtype Velocity = Velocity
     { unVel :: VU.Vector Double
-    } deriving (Show, Generic)
+    } deriving (Show)
 
 newtype Value = Value
     { unVal :: Double
-    } deriving (Show, Generic)
+    } deriving (Show)
 
 data Particle = Particle
     { position           :: Position
     , velocity           :: Velocity
     , bestPosition       :: Position
-    , bestGlobalPosition :: Position
     , bestValue          :: Value
+    , bestGlobalPosition :: Position
     , bestGlobalValue    :: Value
-    } deriving (Show, Generic)
+    } deriving (Show)
 
 newtype Swarm = Swarm
     { particles :: V.Vector Particle
-    } deriving (Show, Generic)
-
-instance Generic a => Generic (VU.Vector a)
-instance Generic a => Generic (V.Vector a)
-instance (Out a, Generic a) => Out (VU.Vector a)
-instance (Out a, Generic a) => Out (V.Vector a)
-instance Out Position
-instance Out Velocity
-instance Out Value
-instance Out Swarm
+    } deriving (Show)
 
 type RandMonad m = (PrimMonad m, MonadPrim m)
 
@@ -78,7 +68,7 @@ genParticle dim from to = do
     position <- genPosition dim from to
     velocity <- genVelocity dim (from / 100.0) (to / 100.0)
     let bestValue = Value 10000.0
-    return $ Particle position velocity position  position bestValue bestValue
+    return $ Particle position velocity position bestValue position bestValue
 
 genSwarm :: (RandMonad m) => Int -> Int -> Double -> Double -> Rand m Swarm
 genSwarm n dim from to = fmap Swarm $ V.replicateM n $ genParticle dim from to
@@ -87,6 +77,11 @@ optimize :: (RandMonad m) => Swarm -> Integer -> Rand m Particle
 optimize swarm iterations = do
     return $ V.head $ particles swarm
 
+ppShow :: Show a => a -> String
+ppShow = renderStyle wideStyle . ppDoc
+  where
+    wideStyle = Style PageMode 238 1.5
+
 test :: Config -> IO ()
 test cfg = do
     let genSeed = RM.toSeed . VU.singleton $ Config.seed cfg
@@ -94,4 +89,6 @@ test cfg = do
         initialSwarm <- genSwarm (Config.swarmSize cfg) (Config.dimension cfg) (-5.12) 5.12
         liftIO $ putStrLn $ "Initial swarm:\n" <> ppShow initialSwarm
         optimize initialSwarm $ fromMaybe 100 $ Config.iterations cfg
-    putStrLn $ "Result:\n" <> pretty result
+    -- putStrLn $ "Result:\n" <> (renderStyle mystyle $ ppDoc result)
+    putStrLn $ "Result:\n" <> ppShow result
+    -- putStrLn $  renderStyle mystyle $ ppDoc [1..25]

@@ -18,9 +18,8 @@ dependencies:
   - monad-primitive
   - data-default
   # - pretty-simple
+  - pretty
   - pretty-show
-  - GenericPretty
-  # - generic-deriving
 
   - deepseq
   - text
