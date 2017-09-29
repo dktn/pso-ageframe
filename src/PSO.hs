@@ -1,5 +1,6 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
+-- {-# LANGUAGE DeriveAnyClass #-}
 
 module PSO where
 
@@ -16,17 +17,18 @@ import           Data.Maybe (fromMaybe)
 import           Data.Monoid ((<>))
 -- import qualified Data.Text.Lazy.IO as L
 -- import qualified Data.Text.Lazy as L
+-- import           Data.Default (Default(..))
 
--- import           Text.Pretty.Simple (pShow)
--- import           Text.Show.Pretty (ppShow)
 import           Pretty (ppShow)
 import           Config (Config())
 import qualified Config
-import qualified Functions
+import           Functions (CostFunction, Bounds(..), Dim(..))
+import qualified Functions as F
 
 -- TODO:
--- pretty printing, default vect, initialize globals
+-- default vect, initialize globals
 -- what velocity, velocity changes, global propagation
+-- bounds per dimension
 
 newtype Position = Position
     { unPos :: VU.Vector Double
@@ -55,21 +57,27 @@ newtype Swarm = Swarm
 
 type RandMonad m = (PrimMonad m, MonadPrim m)
 
-genPosition :: RandMonad m => Int -> Double -> Double -> Rand m Position
-genPosition dim from to = fmap Position $ VU.replicateM dim $ RM.uniformR (from, to)
+genVectorIn :: RandMonad m => (VU.Vector Double -> a) -> Dim -> Bounds -> Rand m a
+genVectorIn cons (Dim dim) (Bounds from to) = fmap cons $ VU.replicateM dim $ RM.uniformR (from, to)
 
-genVelocity :: RandMonad m => Int -> Double -> Double -> Rand m Velocity
-genVelocity dim from to = fmap Velocity $ VU.replicateM dim $ RM.uniformR (from, to)
+genPosition :: RandMonad m => Dim -> Bounds -> Rand m Position
+genPosition = genVectorIn Position
 
-genParticle :: RandMonad m => Int -> Double -> Double -> Rand m Particle
-genParticle dim from to = do
-    position <- genPosition dim from to
-    velocity <- genVelocity dim (from / 100.0) (to / 100.0)
-    let bestValue = Value 10000.0
-    return $ Particle position velocity position bestValue position bestValue
+genVelocity :: RandMonad m => Dim -> Bounds -> Rand m Velocity
+genVelocity = genVectorIn Velocity
 
-genSwarm :: RandMonad m => Int -> Int -> Double -> Double -> Rand m Swarm
-genSwarm n dim from to = fmap Swarm $ V.replicateM n $ genParticle dim from to
+genParticle :: RandMonad m => CostFunction -> Rand m Particle
+genParticle costFunction = do
+    let dim = F.dim costFunction
+        bounds@(Bounds from to) = F.bounds costFunction
+    pos <- genPosition dim bounds
+    vel <- genVelocity dim $ Bounds (from / 100.0) (to / 100.0)
+
+    let bestVal = Value 10000.0
+    return $ Particle pos vel pos bestVal pos bestVal
+
+genSwarm :: RandMonad m => Int -> CostFunction -> Rand m Swarm
+genSwarm swarmSize costFunction = fmap Swarm $ V.replicateM swarmSize $ genParticle costFunction
 
 optimize :: RandMonad m => Swarm -> Integer -> Rand m Particle
 optimize swarm iterations = do
@@ -78,8 +86,10 @@ optimize swarm iterations = do
 test :: Config -> IO ()
 test cfg = do
     let genSeed = RM.toSeed . VU.singleton $ Config.seed cfg
+        dim = Dim $ Config.dimension cfg
+        costFunction = F.rastrigin dim
     result <- RM.runWithSeed genSeed $ do
-        initialSwarm <- genSwarm (Config.swarmSize cfg) (Config.dimension cfg) (-5.12) 5.12
+        initialSwarm <- genSwarm (Config.swarmSize cfg) costFunction
         liftIO $ putStrLn $ "Initial swarm:\n" <> ppShow initialSwarm
         optimize initialSwarm $ fromMaybe 100 $ Config.iterations cfg
     -- putStrLn $ "Result:\n" <> (renderStyle mystyle $ ppDoc result)
