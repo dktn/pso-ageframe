@@ -15,6 +15,9 @@ import           Control.Monad.Primitive.Class (MonadPrim)
 import           Control.Monad.IO.Class
 import           Data.Maybe (fromMaybe)
 import           Data.Monoid ((<>))
+import           Data.Ord (comparing)
+import           Control.Monad (forM)
+
 -- import qualified Data.Text.Lazy.IO as L
 -- import qualified Data.Text.Lazy as L
 -- import           Data.Default (Default(..))
@@ -22,7 +25,7 @@ import           Data.Monoid ((<>))
 import           Pretty (ppShow)
 import           Config (Config())
 import qualified Config
-import           Functions (CostFunction, Bounds(..), Dim(..))
+import           Functions (CostFunction, Evaluator(..), Bounds(..), Dim(..))
 import qualified Functions as F
 
 -- TODO:
@@ -40,15 +43,18 @@ newtype Velocity = Velocity
 
 newtype Value = Value
     { unVal :: Double
+    } deriving (Show, Eq, Ord)
+
+data EvaluatedPositon = EvaluatedPositon
+    { position :: Position
+    , value    :: Value
     } deriving (Show)
 
 data Particle = Particle
-    { position           :: Position
-    , velocity           :: Velocity
-    , bestPosition       :: Position
-    , bestValue          :: Value
-    , bestGlobalPosition :: Position
-    , bestGlobalValue    :: Value
+    { particleEvalPosition :: EvaluatedPositon
+    , particleVelocity     :: Velocity
+    , bestEvaluation       :: EvaluatedPositon
+    , bestGlobalEvaluation :: EvaluatedPositon
     } deriving (Show)
 
 newtype Swarm = Swarm
@@ -57,27 +63,39 @@ newtype Swarm = Swarm
 
 type RandMonad m = (PrimMonad m, MonadPrim m)
 
-genVectorIn :: RandMonad m => (VU.Vector Double -> a) -> Dim -> Bounds -> Rand m a
-genVectorIn cons (Dim dim) (Bounds from to) = fmap cons $ VU.replicateM dim $ RM.uniformR (from, to)
+genVectorFor :: RandMonad m => (VU.Vector Double -> a) -> Dim -> Bounds -> Rand m a
+genVectorFor cons (Dim dim) (Bounds from to) = fmap cons $ VU.replicateM dim $ RM.uniformR (from, to)
 
 genPosition :: RandMonad m => Dim -> Bounds -> Rand m Position
-genPosition = genVectorIn Position
+genPosition = genVectorFor Position
 
 genVelocity :: RandMonad m => Dim -> Bounds -> Rand m Velocity
-genVelocity = genVectorIn Velocity
+genVelocity = genVectorFor Velocity
 
-genParticle :: RandMonad m => CostFunction -> Rand m Particle
-genParticle costFunction = do
+evalCost :: Evaluator -> Position -> Value
+evalCost (Evaluator eval) (Position pos) = Value $ eval pos
+
+genParticle :: RandMonad m => CostFunction -> EvaluatedPositon -> EvaluatedPositon -> EvaluatedPositon -> Rand m Particle
+genParticle costFunction bestEval bestGlobalEval evalPos = do
     let dim = F.dim costFunction
-        bounds@(Bounds from to) = F.bounds costFunction
-    pos <- genPosition dim bounds
+        Bounds from to = F.bounds costFunction
     vel <- genVelocity dim $ Bounds (from / 100.0) (to / 100.0)
+    return $ Particle evalPos vel bestEval bestGlobalEval
 
-    let bestVal = Value 10000.0
-    return $ Particle pos vel pos bestVal pos bestVal
+genEvaluatedPosition :: RandMonad m => CostFunction -> Rand m EvaluatedPositon
+genEvaluatedPosition costFunction = do
+    let dim = F.dim costFunction
+        evaluator = F.evaluator costFunction
+        bounds = F.bounds costFunction
+    pos <- genPosition dim bounds
+    let val = evalCost evaluator pos
+    return $ EvaluatedPositon pos val
 
 genSwarm :: RandMonad m => Int -> CostFunction -> Rand m Swarm
-genSwarm swarmSize costFunction = fmap Swarm $ V.replicateM swarmSize $ genParticle costFunction
+genSwarm swarmSize costFunction = do
+    evaluatedPositions <- V.replicateM swarmSize $ genEvaluatedPosition costFunction
+    let bestEvalPos = V.minimumBy (comparing value) evaluatedPositions
+    fmap Swarm $ forM evaluatedPositions $ genParticle costFunction bestEvalPos bestEvalPos
 
 optimize :: RandMonad m => Swarm -> Integer -> Rand m Particle
 optimize swarm iterations = do

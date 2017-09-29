@@ -4,17 +4,18 @@ import           Data.Vector.Unboxed (Vector)
 import qualified Data.Vector.Unboxed as VU
 -- import qualified Data.Vector.Unboxed.Mutable as VUM
 
-data Bounds = Bounds Double Double
+data Bounds = Bounds Double Double -- change to Vector
 newtype Dim = Dim Int
+newtype Evaluator = Evaluator (Vector Double -> Double)
 
 data CostFunction = CostFunction
-    { dim    :: Dim
-    , cost   :: Vector Double -> Double
-    , bounds :: Bounds
+    { dim       :: Dim
+    , evaluator :: Evaluator
+    , bounds    :: Bounds
     }
 
 rastrigin :: Dim -> CostFunction
-rastrigin d = CostFunction d rastriginFunction (Bounds (-5.12) 5.12)
+rastrigin d = CostFunction d (Evaluator rastriginFunction) (Bounds (-5.12) 5.12)
 
 {-# INLINE rastrigin #-}
 rastriginFunction :: Vector Double -> Double
