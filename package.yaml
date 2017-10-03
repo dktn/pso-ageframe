@@ -11,6 +11,7 @@ ghc-options:         -Wall
 
 dependencies:
   - base >= 4.7 && < 5
+  - protolude
   - vector
   - primitive
   - mwc-random
@@ -34,6 +35,7 @@ library:
   source-dirs:        src
 
 default-extensions:
+  - NoImplicitPrelude
   - OverloadedStrings
   # - NoMonomorphismRestriction
   - DeriveGeneric

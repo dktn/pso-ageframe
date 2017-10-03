@@ -1,9 +1,9 @@
 {-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE OverloadedStrings #-}
 -- {-# LANGUAGE DeriveAnyClass #-}
 
 module PSO where
 
+import           Protolude
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 -- import qualified System.Random.MWC as R
@@ -12,14 +12,8 @@ import qualified System.Random.MWC.Monad as RM
 -- import           Control.Monad.Primitive (PrimMonad, PrimState)
 import           Control.Monad.Primitive (PrimMonad)
 import           Control.Monad.Primitive.Class (MonadPrim)
-import           Control.Monad.IO.Class
-import           Data.Maybe (fromMaybe)
-import           Data.Monoid ((<>))
 import           Data.Ord (comparing)
-import           Control.Monad (forM)
 
--- import qualified Data.Text.Lazy.IO as L
--- import qualified Data.Text.Lazy as L
 -- import           Data.Default (Default(..))
 
 import           Pretty (ppShow)
@@ -64,7 +58,7 @@ newtype Swarm = Swarm
 type RandMonad m = (PrimMonad m, MonadPrim m)
 
 genVectorFor :: RandMonad m => (VU.Vector Double -> a) -> Dim -> Bounds -> Rand m a
-genVectorFor cons (Dim dim) (Bounds from to) = fmap cons $ VU.replicateM dim $ RM.uniformR (from, to)
+genVectorFor cons (Dim dim) (Bounds l u) = fmap cons $ VU.replicateM dim $ RM.uniformR (l, u)
 
 genPosition :: RandMonad m => Dim -> Bounds -> Rand m Position
 genPosition = genVectorFor Position
@@ -78,8 +72,8 @@ evalCost (Evaluator eval) (Position pos) = Value $ eval pos
 genParticle :: RandMonad m => CostFunction -> EvaluatedPositon -> EvaluatedPositon -> EvaluatedPositon -> Rand m Particle
 genParticle costFunction bestEval bestGlobalEval evalPos = do
     let dim = F.dim costFunction
-        Bounds from to = F.bounds costFunction
-    vel <- genVelocity dim $ Bounds (from / 100.0) (to / 100.0)
+        Bounds l u = F.bounds costFunction
+    vel <- genVelocity dim $ Bounds (l / 100.0) (u / 100.0)
     return $ Particle evalPos vel bestEval bestGlobalEval
 
 genEvaluatedPosition :: RandMonad m => CostFunction -> Rand m EvaluatedPositon

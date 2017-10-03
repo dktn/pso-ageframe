@@ -1,9 +1,9 @@
 module Main where
 
+import           Protolude
 import           Control.Concurrent       (threadDelay)
 import           Data.Maybe               (listToMaybe)
 import           System.Environment       (getArgs)
-import           System.Exit              (die)
 import           System.Remote.Counter    (Counter, inc)
 import           System.Remote.Monitoring (forkServer, getCounter)
 
@@ -16,7 +16,7 @@ getConfig = do
     file <- case listToMaybe args of
         Nothing  -> die "No config file provided."
         Just arg -> return arg
-    cfgMay <- Config.loadConfig file
+    cfgMay <- Config.loadConfig $ toS file
     case cfgMay of
         Left  err -> die err
         Right cfg -> return cfg
@@ -39,6 +39,6 @@ main = do
     cfg     <- getConfig
     runPlatform cfg
     inc counter
-    putStrLn "Exited."
+    putText "Exited."
     -- test counter
     -- ben

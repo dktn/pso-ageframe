@@ -6,9 +6,8 @@ module Config
     , Config(..)
     ) where
 
-import           GHC.Generics
+import           Protolude
 import           Data.Text (Text)
-import           System.FilePath (FilePath)
 import           GHC.Word (Word32)
 
 import           Data.Yaml
@@ -21,21 +20,22 @@ data Config = Config { input      :: Text
                      , iterations :: Maybe Integer
                      } deriving (Eq, Show, Generic, FromJSON)
 
-loadConfig :: FilePath -> IO (Either String Config)
+loadConfig :: Text -> IO (Either Text Config)
 loadConfig = decodeYaml
 
-decodeYaml :: FromJSON a => FilePath -> IO (Either String a)
+decodeYaml :: FromJSON a => Text -> IO (Either Text a)
 decodeYaml file = do
-    result <- decodeFileEither file
+    result <- decodeFileEither $ toS file
     return $ either (Left . errToString) Right result
       where
-        errToString err = file ++ case err of
-            AesonException e                          -> ": " ++ e
-            InvalidYaml (Just (YamlException s))      -> ": " ++ s
-            InvalidYaml (Just YamlParseException{..}) -> ":"  ++ show yamlLine
-                                                      ++ ":"  ++ show yamlColumn
-                                                      ++ ": " ++ yamlProblem
-                                                      ++ " "  ++ yamlContext
+        errToString :: ParseException -> Text
+        errToString err = file <> case err of
+            AesonException e                          -> ": " <> toS e
+            InvalidYaml (Just (YamlException s))      -> ": " <> toS s
+            InvalidYaml (Just YamlParseException{..}) -> ":"  <> show yamlLine
+                                                      <> ":"  <> show yamlColumn
+                                                      <> ": " <> toS yamlProblem
+                                                      <> " "  <> toS yamlContext
               where
                 YamlMark{..} = yamlProblemMark
-            _                                         -> ": " ++ show err
+            _                                         -> ": " <> show err

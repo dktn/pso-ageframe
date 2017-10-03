@@ -1,6 +1,7 @@
 module Main where
 
-import Criterion.Main
+import           Protolude
+import           Criterion.Main
 
 
 fib :: Int -> Int

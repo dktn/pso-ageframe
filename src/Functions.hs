@@ -1,5 +1,6 @@
 module Functions where
 
+import           Protolude
 import           Data.Vector.Unboxed (Vector)
 import qualified Data.Vector.Unboxed as VU
 -- import qualified Data.Vector.Unboxed.Mutable as VUM
