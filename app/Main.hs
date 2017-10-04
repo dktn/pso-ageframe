@@ -2,7 +2,6 @@ module Main where
 
 import           Protolude
 import           Control.Concurrent       (threadDelay)
-import           Data.Maybe               (listToMaybe)
 import           System.Environment       (getArgs)
 import           System.Remote.Counter    (Counter, inc)
 import           System.Remote.Monitoring (forkServer, getCounter)

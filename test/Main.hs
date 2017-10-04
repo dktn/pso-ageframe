@@ -3,7 +3,6 @@
 module Main where
 
 import           Protolude
-import           Data.List
 
 import           Test.Tasty
 import           Test.Tasty.SmallCheck as SC
@@ -22,7 +21,7 @@ properties = testGroup "Properties" [scProps, qcProps]
 scProps :: TestTree
 scProps = testGroup "(checked by SmallCheck)"
   [ SC.testProperty "sort == sort . reverse" $
-      \list -> sort (list :: [Int]) == sort (reverse list)
+      \xs -> sort (xs :: [Int]) == sort (reverse xs)
   , SC.testProperty "Fermat's little theorem" $
       \x -> ((x :: Integer) ^ 7 - x) `mod` 7 == 0
   -- the following property does not hold
@@ -34,7 +33,7 @@ scProps = testGroup "(checked by SmallCheck)"
 qcProps :: TestTree
 qcProps = testGroup "(checked by QuickCheck)"
   [ QC.testProperty "sort == sort . reverse" $
-      \list -> sort (list :: [Int]) == sort (reverse list)
+      \xs -> sort (xs :: [Int]) == sort (reverse xs)
   , QC.testProperty "Fermat's little theorem" $
       \x -> ((x :: Integer) ^ 7 - x) `mod` 7 == 0
   -- the following property does not hold

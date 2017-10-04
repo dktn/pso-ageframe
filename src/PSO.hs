@@ -12,7 +12,6 @@ import qualified System.Random.MWC.Monad as RM
 -- import           Control.Monad.Primitive (PrimMonad, PrimState)
 import           Control.Monad.Primitive (PrimMonad)
 import           Control.Monad.Primitive.Class (MonadPrim)
-import           Data.Ord (comparing)
 
 -- import           Data.Default (Default(..))
 
