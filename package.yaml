@@ -19,6 +19,7 @@ dependencies:
   - monad-primitive
   - data-default
   # - pretty-simple
+  - newtype-generics
   - pretty
   - pretty-show
 
@@ -38,7 +39,10 @@ default-extensions:
   - NoImplicitPrelude
   - OverloadedStrings
   # - NoMonomorphismRestriction
+  - ConstraintKinds
   - DeriveGeneric
+  # - GeneralizedNewtypeDeriving
+  - DeriveAnyClass
 
 executables:
   pso-ageframe-exe:

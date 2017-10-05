@@ -1,6 +1,3 @@
-{-# LANGUAGE ConstraintKinds #-}
--- {-# LANGUAGE DeriveAnyClass #-}
-
 module PSO where
 
 import           Protolude
@@ -13,30 +10,28 @@ import qualified System.Random.MWC.Monad as RM
 import           Control.Monad.Primitive (PrimMonad)
 import           Control.Monad.Primitive.Class (MonadPrim)
 
+import           Control.Newtype (Newtype(..))
+
 -- import           Data.Default (Default(..))
 
 import           Pretty (ppShow)
 import           Config (Config())
 import qualified Config
-import           Functions (CostFunction, Evaluator(..), Bounds(..), Dim(..))
+import           Functions (CostFunction, Evaluator(..), BoundsList(..), Bounds(..), Dim(..))
 import qualified Functions as F
 
 -- TODO:
--- default vect, initialize globals
--- what velocity, velocity changes, global propagation
 -- bounds per dimension
+-- what velocity, velocity changes, global propagation
 
-newtype Position = Position
-    { unPos :: VU.Vector Double
-    } deriving (Show)
+newtype Position = Position (VU.Vector Double)
+    deriving (Show, Generic, Newtype)
 
-newtype Velocity = Velocity
-    { unVel :: VU.Vector Double
-    } deriving (Show)
+newtype Velocity = Velocity (VU.Vector Double)
+    deriving (Show, Generic, Newtype)
 
-newtype Value = Value
-    { unVal :: Double
-    } deriving (Show, Eq, Ord)
+newtype Value = Value Double
+    deriving (Show, Eq, Ord, Generic, Newtype)
 
 data EvaluatedPositon = EvaluatedPositon
     { position :: Position
@@ -50,14 +45,13 @@ data Particle = Particle
     , bestGlobalEvaluation :: EvaluatedPositon
     } deriving (Show)
 
-newtype Swarm = Swarm
-    { particles :: V.Vector Particle
-    } deriving (Show)
+newtype Swarm = Swarm (V.Vector Particle)
+    deriving (Show, Generic, Newtype)
 
 type RandMonad m = (PrimMonad m, MonadPrim m)
 
 genVectorFor :: RandMonad m => (VU.Vector Double -> a) -> Dim -> Bounds -> Rand m a
-genVectorFor cons (Dim dim) (Bounds l u) = fmap cons $ VU.replicateM dim $ RM.uniformR (l, u)
+genVectorFor cons (Dim d) (Bounds l u) = fmap cons $ VU.replicateM d $ RM.uniformR (l, u)
 
 genPosition :: RandMonad m => Dim -> Bounds -> Rand m Position
 genPosition = genVectorFor Position
@@ -68,12 +62,12 @@ genVelocity = genVectorFor Velocity
 evalCost :: Evaluator -> Position -> Value
 evalCost (Evaluator eval) (Position pos) = Value $ eval pos
 
-genParticle :: RandMonad m => CostFunction -> EvaluatedPositon -> EvaluatedPositon -> EvaluatedPositon -> Rand m Particle
-genParticle costFunction bestEval bestGlobalEval evalPos = do
+genParticle :: RandMonad m => CostFunction -> EvaluatedPositon -> EvaluatedPositon -> Rand m Particle
+genParticle costFunction bestGlobalEval evalPos = do
     let dim = F.dim costFunction
         Bounds l u = F.bounds costFunction
     vel <- genVelocity dim $ Bounds (l / 100.0) (u / 100.0)
-    return $ Particle evalPos vel bestEval bestGlobalEval
+    return $ Particle evalPos vel evalPos bestGlobalEval
 
 genEvaluatedPosition :: RandMonad m => CostFunction -> Rand m EvaluatedPositon
 genEvaluatedPosition costFunction = do
@@ -88,16 +82,16 @@ genSwarm :: RandMonad m => Int -> CostFunction -> Rand m Swarm
 genSwarm swarmSize costFunction = do
     evaluatedPositions <- V.replicateM swarmSize $ genEvaluatedPosition costFunction
     let bestEvalPos = V.minimumBy (comparing value) evaluatedPositions
-    fmap Swarm $ forM evaluatedPositions $ genParticle costFunction bestEvalPos bestEvalPos
+    fmap Swarm $ forM evaluatedPositions $ genParticle costFunction bestEvalPos
 
 optimize :: RandMonad m => Swarm -> Integer -> Rand m Particle
 optimize swarm iterations = do
-    return $ V.head $ particles swarm
+    return $ V.head $ unpack swarm
 
 test :: Config -> IO ()
 test cfg = do
     let genSeed = RM.toSeed . VU.singleton $ Config.seed cfg
-        dim = Dim $ Config.dimension cfg
+        dim = Config.dimension cfg
         costFunction = F.rastrigin dim
     result <- RM.runWithSeed genSeed $ do
         initialSwarm <- genSwarm (Config.swarmSize cfg) costFunction
@@ -105,4 +99,5 @@ test cfg = do
         optimize initialSwarm $ fromMaybe 100 $ Config.iterations cfg
     -- putStrLn $ "Result:\n" <> (renderStyle mystyle $ ppDoc result)
     putStrLn $ "Result:\n" <> ppShow result
+    putStrLn $ "Cost function:\n" <> ppShow (F.bounds costFunction)
     -- putStrLn $  renderStyle mystyle $ ppDoc [1..25]

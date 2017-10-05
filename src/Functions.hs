@@ -1,25 +1,37 @@
+{-# LANGUAGE DeriveAnyClass #-}
+
 module Functions where
 
 import           Protolude
-import           Data.Vector.Unboxed (Vector)
+import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 -- import qualified Data.Vector.Unboxed.Mutable as VUM
 
-data Bounds = Bounds Double Double -- change to Vector
+import           Control.Newtype (Newtype(..))
+
+data Bounds = Bounds Double Double
+    deriving (Show)
+
+newtype BoundsList = BoundsList (V.Vector Bounds)
+    deriving (Show, Generic, Newtype)
+
 newtype Dim = Dim Int
-newtype Evaluator = Evaluator (Vector Double -> Double)
+    deriving (Show, Generic, Newtype)
+
+newtype Evaluator = Evaluator (VU.Vector Double -> Double)
+    deriving (Generic, Newtype)
 
 data CostFunction = CostFunction
-    { dim       :: Dim
-    , evaluator :: Evaluator
-    , bounds    :: Bounds
+    { dim        :: Dim
+    , evaluator  :: Evaluator
+    , bounds     :: Bounds
     }
 
-rastrigin :: Dim -> CostFunction
-rastrigin d = CostFunction d (Evaluator rastriginFunction) (Bounds (-5.12) 5.12)
+rastrigin :: Int -> CostFunction
+rastrigin d = CostFunction (pack d) (pack rastriginFunction) $ Bounds (-5.12) 5.12
 
-{-# INLINE rastrigin #-}
-rastriginFunction :: Vector Double -> Double
+{-# INLINE rastriginFunction #-}
+rastriginFunction :: VU.Vector Double -> Double
 rastriginFunction vect = a * n + sum1N
   where
     n     = fromIntegral $ VU.length vect
