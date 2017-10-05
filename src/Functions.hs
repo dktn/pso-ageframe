@@ -12,7 +12,7 @@ import           Control.Newtype (Newtype(..))
 data Bounds = Bounds Double Double
     deriving (Show)
 
-newtype BoundsList = BoundsList (V.Vector Bounds)
+newtype BoundsVector = BoundsVector (V.Vector Bounds)
     deriving (Show, Generic, Newtype)
 
 newtype Dim = Dim Int
@@ -22,12 +22,12 @@ newtype Evaluator = Evaluator (VU.Vector Double -> Double)
     deriving (Generic, Newtype)
 
 data CostFunction = CostFunction
-    { evaluator  :: Evaluator
-    , boundsList :: BoundsList
+    { evaluator    :: Evaluator
+    , boundsVector :: BoundsVector
     }
 
 dimension :: CostFunction -> Dim
-dimension costFunction = pack . V.length . unpack $ boundsList costFunction
+dimension costFunction = pack . V.length . unpack $ boundsVector costFunction
 
 rastrigin :: Int -> CostFunction
 rastrigin d = CostFunction (pack rastriginFunction) bl
