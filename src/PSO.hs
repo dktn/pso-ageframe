@@ -12,16 +12,13 @@ import           Control.Monad.Primitive.Class (MonadPrim)
 
 import           Control.Newtype (Newtype(..))
 
--- import           Data.Default (Default(..))
-
 import           Pretty (ppShow)
 import           Config (Config())
 import qualified Config
-import           Functions (CostFunction, Evaluator(..), BoundsList(..), Bounds(..), Dim(..))
+import           Functions (CostFunction, Evaluator(..), BoundsList(..), Bounds(..))
 import qualified Functions as F
 
 -- TODO:
--- bounds per dimension
 -- what velocity, velocity changes, global propagation
 
 newtype Position = Position (VU.Vector Double)
@@ -50,39 +47,37 @@ newtype Swarm = Swarm (V.Vector Particle)
 
 type RandMonad m = (PrimMonad m, MonadPrim m)
 
-genVectorFor :: RandMonad m => (VU.Vector Double -> a) -> Dim -> Bounds -> Rand m a
-genVectorFor cons (Dim d) (Bounds l u) = fmap cons $ VU.replicateM d $ RM.uniformR (l, u)
+genVectorFor :: RandMonad m => (VU.Vector Double -> a) -> BoundsList -> Rand m a
+genVectorFor cons (BoundsList boundsList) = do
+    vecB <- forM boundsList createVec
+    return . cons $ V.convert vecB
+  where
+    createVec (Bounds l u) = RM.uniformR (l, u)
 
-genPosition :: RandMonad m => Dim -> Bounds -> Rand m Position
+genPosition :: RandMonad m => BoundsList -> Rand m Position
 genPosition = genVectorFor Position
 
-genVelocity :: RandMonad m => Dim -> Bounds -> Rand m Velocity
+genVelocity :: RandMonad m => BoundsList -> Rand m Velocity
 genVelocity = genVectorFor Velocity
 
 evalCost :: Evaluator -> Position -> Value
 evalCost (Evaluator eval) (Position pos) = Value $ eval pos
 
-genParticle :: RandMonad m => CostFunction -> EvaluatedPositon -> EvaluatedPositon -> Rand m Particle
-genParticle costFunction bestGlobalEval evalPos = do
-    let dim = F.dim costFunction
-        Bounds l u = F.bounds costFunction
-    vel <- genVelocity dim $ Bounds (l / 100.0) (u / 100.0)
+genParticle :: RandMonad m => BoundsList -> EvaluatedPositon -> EvaluatedPositon -> Rand m Particle
+genParticle boundsList bestGlobalEval evalPos = do
+    vel <- genVelocity boundsList -- TODO: scale
     return $ Particle evalPos vel evalPos bestGlobalEval
 
 genEvaluatedPosition :: RandMonad m => CostFunction -> Rand m EvaluatedPositon
 genEvaluatedPosition costFunction = do
-    let dim = F.dim costFunction
-        evaluator = F.evaluator costFunction
-        bounds = F.bounds costFunction
-    pos <- genPosition dim bounds
-    let val = evalCost evaluator pos
-    return $ EvaluatedPositon pos val
+    pos <- genPosition $ F.boundsList costFunction
+    return . EvaluatedPositon pos $ evalCost (F.evaluator costFunction) pos
 
 genSwarm :: RandMonad m => Int -> CostFunction -> Rand m Swarm
 genSwarm swarmSize costFunction = do
     evaluatedPositions <- V.replicateM swarmSize $ genEvaluatedPosition costFunction
     let bestEvalPos = V.minimumBy (comparing value) evaluatedPositions
-    fmap Swarm $ forM evaluatedPositions $ genParticle costFunction bestEvalPos
+    fmap Swarm . forM evaluatedPositions $ genParticle (F.boundsList costFunction) bestEvalPos
 
 optimize :: RandMonad m => Swarm -> Integer -> Rand m Particle
 optimize swarm iterations = do
@@ -99,5 +94,5 @@ test cfg = do
         optimize initialSwarm $ fromMaybe 100 $ Config.iterations cfg
     -- putStrLn $ "Result:\n" <> (renderStyle mystyle $ ppDoc result)
     putStrLn $ "Result:\n" <> ppShow result
-    putStrLn $ "Cost function:\n" <> ppShow (F.bounds costFunction)
+    putStrLn $ "Cost function bounds:\n" <> ppShow (F.boundsList costFunction)
     -- putStrLn $  renderStyle mystyle $ ppDoc [1..25]

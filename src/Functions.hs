@@ -22,13 +22,17 @@ newtype Evaluator = Evaluator (VU.Vector Double -> Double)
     deriving (Generic, Newtype)
 
 data CostFunction = CostFunction
-    { dim        :: Dim
-    , evaluator  :: Evaluator
-    , bounds     :: Bounds
+    { evaluator  :: Evaluator
+    , boundsList :: BoundsList
     }
 
+dimension :: CostFunction -> Dim
+dimension costFunction = pack . V.length . unpack $ boundsList costFunction
+
 rastrigin :: Int -> CostFunction
-rastrigin d = CostFunction (pack d) (pack rastriginFunction) $ Bounds (-5.12) 5.12
+rastrigin d = CostFunction (pack rastriginFunction) bl
+  where
+    bl = pack $ V.replicate d $ Bounds (-5.12) 5.12
 
 {-# INLINE rastriginFunction #-}
 rastriginFunction :: VU.Vector Double -> Double
