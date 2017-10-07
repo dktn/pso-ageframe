@@ -14,10 +14,10 @@ import           Data.Yaml
 
 
 data Config = Config { input      :: Text
-                     , seed       :: Word32
+                     , seed       :: Maybe Word32
                      , dimension  :: Int
                      , swarmSize  :: Int
-                     , iterations :: Maybe Integer
+                     , epochs     :: Maybe Integer
                      } deriving (Eq, Show, Generic, FromJSON)
 
 loadConfig :: Text -> IO (Either Text Config)

@@ -22,6 +22,7 @@ dependencies:
   - newtype-generics
   - pretty
   - pretty-show
+  - time
 
   - deepseq
   - text
