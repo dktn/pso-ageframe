@@ -1,4 +1,4 @@
-module PSO where
+module PSO2 where
 
 import           Protolude
 import           Data.Vector.Generic (Vector)
@@ -8,7 +8,7 @@ import qualified Data.Vector.Unboxed as VU
 import           System.Random.MWC.Monad (Rand(..))
 import qualified System.Random.MWC.Monad as RM
 import           Control.Monad.Primitive (PrimMonad)
-import           Control.Monad.Primitive.Class (MonadPrim)
+import           Control.Monad.Primitive.Class (MonadPrim, liftPrim)
 
 import           Control.Newtype (Newtype(..))
 
@@ -18,6 +18,7 @@ import qualified Config
 import           Functions (CostFunction, Evaluator(..), Dim(..), BoundsVector(..), Bounds(..))
 import qualified Functions as F
 
+import qualified Data.Vector.Fusion.Bundle as Bundle
 
 newtype RandVector = RandVector (VU.Vector Double)
     deriving (Show, Generic, Newtype)
@@ -124,22 +125,24 @@ globalParams = Params { paramOmega = 0.729, paramPhiP = 1.49445, paramPhiL = 1.4
 rRange :: (Double, Double)
 rRange = (0, 1)
 
-updateParticleVelPosEval :: Evaluator -> RandVector -> RandVector -> Particle -> Particle
-updateParticleVelPosEval evaluator rPV rLV particle = particle { particleVelocity    = newParticleVelocity
-                                                               , particleEvalPos     = newParticleEvalPos
-                                                               , bestParticleEvalPos = newBestParticleEvalPos
-                                                               }
+updateParticleVelPosEval :: PrimMonad m => Evaluator -> RandVector -> RandVector -> Particle -> m Particle
+updateParticleVelPosEval evaluator rPV rLV particle = do
+    newParticleVelocity <- calcNewParticleVelocity
+    return $ particle { particleVelocity    = newParticleVelocity
+                      , particleEvalPos     = newParticleEvalPos newParticleVelocity
+                      , bestParticleEvalPos = newBestParticleEvalPos newParticleVelocity
+                      }
   where
-    newBestParticleEvalPos :: EvaluatedPosition
-    newBestParticleEvalPos = if value newParticleEvalPos < value (bestParticleEvalPos particle)
-                                 then newParticleEvalPos
+    newBestParticleEvalPos :: Velocity -> EvaluatedPosition
+    newBestParticleEvalPos newParticleVelocity = if value (newParticleEvalPos newParticleVelocity) < value (bestParticleEvalPos particle)
+                                 then newParticleEvalPos newParticleVelocity
                                  else bestParticleEvalPos particle
 
-    newParticleEvalPos :: EvaluatedPosition
-    newParticleEvalPos = calculateEvalPos evaluator newParticlePos
+    newParticleEvalPos :: Velocity -> EvaluatedPosition
+    newParticleEvalPos newParticleVelocity = calculateEvalPos evaluator $ newParticlePos newParticleVelocity
 
-    newParticlePos :: Position
-    newParticlePos = pack $ applyVelocity (unpack newParticleVelocity) (unpack $ particlePos particle)
+    newParticlePos :: Velocity -> Position
+    newParticlePos newParticleVelocity = pack $ applyVelocity (unpack newParticleVelocity) (unpack $ particlePos particle)
 
     applyVelocity :: (Vector v a, Num a) => v a -> v a -> v a
     applyVelocity = VG.zipWith applyVelocityI
@@ -147,20 +150,56 @@ updateParticleVelPosEval evaluator rPV rLV particle = particle { particleVelocit
     applyVelocityI :: Num a => a -> a -> a
     applyVelocityI vel x = x + vel
 
-    newParticleVelocity :: Velocity
-    newParticleVelocity = pack $ calcVelocity globalParams
+    calcNewParticleVelocity :: PrimMonad m => m Velocity
+    calcNewParticleVelocity = pack <$> calcVelocity globalParams
                                               (unpack rPV)
                                               (unpack rLV)
-                                              (unpack $ particleVelocity particle)
-                                              (unpack $ particlePos particle)
                                               (unpack $ bestParticlePos particle)
                                               (unpack $ bestLocalPos particle)
+                                              (unpack $ particleVelocity particle)
+                                              (unpack $ particlePos particle)
 
-    calcVelocity :: (Vector v a, Num a) => Params a -> v a -> v a -> v a -> v a -> v a -> v a -> v a
-    calcVelocity params = VG.zipWith6 $ calcVelocityI params
+    calcVelocity :: (PrimMonad m, Vector v a, Num a) => Params a -> v a -> v a -> v a -> v a -> v a -> v a -> m (v a)
+    calcVelocity params@(Params omega phiP phiL) rP rL bestPPos bestLPos v pos = do
+        -- locx <- VG.zipWithM (\blp pos -> return $ blp - pos) bestLPos pos
+        -- loc  <- VG.zipWithM (\r l -> return $ phiL * r * l) rL locx
+        -- parx <- VG.zipWithM (\bpp pos -> return $ bpp - pos) bestPPos pos
+        -- par  <- VG.zipWithM (\r p -> return $ phiP * r * p) rP parx
+        -- lpar <- VG.zipWithM (\l p -> return $ l + p) loc par
+        -- let vels = VG.map (\vi -> omega * vi) v
+        -- VG.zipWithM (\v s -> return $ v + s) vels lpar
+        VG.izipWithM (calcVel params rP rL bestPPos bestLPos) v pos
 
-    calcVelocityI :: Num a => Params a -> a -> a -> a -> a -> a -> a -> a
-    calcVelocityI (Params omega phiP phiL) rP rL v pos bestPPos bestLPos = omega * v + rP * phiP * (bestPPos - pos) + rL * phiL * (bestLPos - pos)
+    calcVel :: (PrimMonad m, Num a, Vector v a) => Params a -> v a -> v a -> v a -> v a -> Int -> a -> a -> m a
+    calcVel (Params omega phiP phiL) rP rL bestPPos bestLPos i v pos = do
+        let rPI = rP VG.! i
+            rLI = rL VG.! i
+            bestPPosI = bestPPos VG.! i
+            bestLPosI = bestLPos VG.! i
+        -- return $ omega * v
+        return $ omega * v + rPI * phiP * (bestPPosI - pos) + rLI * phiL * (bestLPosI - pos)
+
+-- zipWith6 :: (Vector v a, Vector v b, Vector v c, Vector v d, Vector v e,
+--              Vector v f, Vector v g)
+--          => (a -> b -> c -> d -> e -> f -> g)
+--          -> v a -> v b -> v c -> v d -> v e -> v f -> v g
+-- {-# INLINE zipWith6 #-}
+-- zipWith6 f = \as bs cs ds es fs ->
+--     unstream (Bundle.zipWith6 f (stream as)
+--                                 (stream bs)
+--                                 (stream cs)
+--                                 (stream ds)
+--                                 (stream es)
+--                                 (stream fs))
+
+-- zipWithM :: (Monad m, Vector v a, Vector v b, Vector v c)
+--          => (a -> b -> m c) -> v a -> v b -> m (v c)
+-- -- FIXME: specialise for ST and IO?
+-- {-# INLINE zipWithM #-}
+-- zipWithM f = \as bs -> unstreamM $ Bundle.zipWithM f (stream as) (stream bs)
+
+    calcVelocityI :: (PrimMonad m, Num a) => Params a -> a -> a -> a -> a -> a -> a -> m a
+    calcVelocityI (Params omega phiP phiL) rP rL bestPPos bestLPos v pos = return $ omega * v + rP * phiP * (bestPPos - pos) + rL * phiL * (bestLPos - pos)
     -- v ← ωv + φp rp (p-x) + φg rg (g-x)
 
 genRandomVector :: PrimMonadPrim m => Dim -> Rand m RandVector
@@ -170,7 +209,8 @@ updateParticlePosVel :: PrimMonadPrim m => Dim -> Evaluator -> Particle -> Rand 
 updateParticlePosVel dim evaluator particle = do
     rPV <- genRandomVector dim
     rLV <- genRandomVector dim
-    return $ updateParticleVelPosEval evaluator rPV rLV particle
+    liftPrim $ updateParticleVelPosEval evaluator rPV rLV particle
+    -- return $ updateParticleVelPosEval evaluator rPV rLV particle
 
 updateParticlesPosVel :: (Vector v Particle, PrimMonadPrim m) => v Particle -> Comp m (v Particle)
 updateParticlesPosVel particles = do
@@ -214,6 +254,9 @@ optimize epoch swarm = do
     if epoch < maxEpochs
         then optimize (epoch + 1) newSwarm
         else return (getBest newSwarm, newSwarm)
+
+-- TODO
+-- thaw
 
 -- Tests
 
