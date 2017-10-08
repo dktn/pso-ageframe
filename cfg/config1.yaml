@@ -1,5 +1,5 @@
 input: data1.txt
-# seed: 3281707648
-dimension: 10
-swarmSize: 50
-epochs: 600
+seed: 1
+dimension: 100
+swarmSize: 100
+epochs: 1000

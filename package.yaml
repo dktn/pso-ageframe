@@ -40,6 +40,7 @@ default-extensions:
   - NoImplicitPrelude
   - OverloadedStrings
   # - NoMonomorphismRestriction
+  - FlexibleContexts
   - ConstraintKinds
   - DeriveGeneric
   # - GeneralizedNewtypeDeriving
