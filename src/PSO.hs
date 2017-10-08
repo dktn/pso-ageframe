@@ -15,7 +15,7 @@ import           Control.Newtype (Newtype(..))
 import           Pretty (ppShow)
 import           Config (Config())
 import qualified Config
-import           Functions (CostFunction, Evaluator(..), BoundsVector(..), Bounds(..))
+import           Functions (CostFunction, Evaluator(..), Dim(..), BoundsVector(..), Bounds(..))
 import qualified Functions as F
 
 
@@ -46,9 +46,14 @@ data Particle = Particle
 newtype Swarm = Swarm (VB.Vector Particle)
     deriving (Show, Generic, Newtype)
 
+data Env = Env
+    { config       :: Config
+    , costFunction :: CostFunction
+    }
+
 type PrimMonadPrim m = (PrimMonad m, MonadPrim m)
 
-type Comp m a = ReaderT Config (StateT Integer (Rand m)) a
+type Comp m a = ReaderT Env (StateT Integer (Rand m)) a
 
 liftRand :: (MonadPrim m) => Rand m a -> Comp m a
 liftRand = lift . lift
@@ -91,16 +96,19 @@ genParticle boundsVector bestLocalEvalPosition evalPos = do
     vel <- genVelocity $ genVelocityBounds boundsVector
     return $ Particle vel evalPos evalPos bestLocalEvalPosition
 
-genEvaluatedPosition :: PrimMonadPrim m => CostFunction -> Rand m EvaluatedPosition
-genEvaluatedPosition costFunction = do
-    pos <- genPosition $ F.boundsVector costFunction
-    return $ calculateEvalPos (F.evaluator costFunction) pos
+genEvaluatedPosition :: PrimMonadPrim m => Comp m EvaluatedPosition
+genEvaluatedPosition = do
+    costFun <- asks costFunction
+    pos <- liftRand $ genPosition $ F.boundsVector costFun
+    return $ calculateEvalPos (F.evaluator costFun) pos
 
-genSwarm :: PrimMonadPrim m => Int -> CostFunction -> Rand m Swarm
-genSwarm swarmSize costFunction = do
-    evaluatedPositions <- VG.replicateM swarmSize $ genEvaluatedPosition costFunction
+genSwarm :: PrimMonadPrim m => Comp m Swarm
+genSwarm = do
+    swarmSize <- asks $ Config.swarmSize . config
+    costFun   <- asks costFunction
+    evaluatedPositions <- VG.replicateM swarmSize genEvaluatedPosition
     let bestLocalEvalPosition = VG.minimumBy (comparing value) evaluatedPositions
-    fmap Swarm . forM evaluatedPositions $ genParticle (F.boundsVector costFunction) bestLocalEvalPosition
+    fmap Swarm $ liftRand $ forM evaluatedPositions $ genParticle (F.boundsVector costFun) bestLocalEvalPosition
 
 -- Optimization
 
@@ -155,16 +163,21 @@ updateParticleVelPosEval evaluator rPV rLV particle = particle { particleVelocit
     calcVelocityI (Params omega phiP phiL) rP rL v pos bestPPos bestLPos = omega * v + rP * phiP * (bestPPos - pos) + rL * phiL * (bestLPos - pos)
     -- v ← ωv + φp rp (p-x) + φg rg (g-x)
 
-updateParticlePosVel :: PrimMonadPrim m => CostFunction -> Particle -> Rand m Particle
-updateParticlePosVel costFunction particle = do
-    let dim = unpack $ F.dimension costFunction
-    rPV <- fmap RandVector $ VU.replicateM dim $ RM.uniformR rRange
-    rLV <- fmap RandVector $ VU.replicateM dim $ RM.uniformR rRange
-    let newParticle = updateParticleVelPosEval (F.evaluator costFunction) rPV rLV particle
-    return newParticle
+genRandomVector :: PrimMonadPrim m => Dim -> Rand m RandVector
+genRandomVector (Dim d) = fmap RandVector $ VU.replicateM d $ RM.uniformR rRange
 
-updateParticlesPosVel :: (Vector v Particle, PrimMonadPrim m) => CostFunction -> v Particle -> Rand m (v Particle)
-updateParticlesPosVel costFunction particles = VG.forM particles $ updateParticlePosVel costFunction
+updateParticlePosVel :: PrimMonadPrim m => Dim -> Evaluator -> Particle -> Rand m Particle
+updateParticlePosVel dim evaluator particle = do
+    rPV <- genRandomVector dim
+    rLV <- genRandomVector dim
+    return $ updateParticleVelPosEval evaluator rPV rLV particle
+
+updateParticlesPosVel :: (Vector v Particle, PrimMonadPrim m) => v Particle -> Comp m (v Particle)
+updateParticlesPosVel particles = do
+    costFun <- asks costFunction
+    let dim = F.dimension costFun
+        evaluator = F.evaluator costFun
+    liftRand $ VG.forM particles $ updateParticlePosVel dim evaluator
 
 calculateBestLocalEvalPos :: Vector v Particle => v Particle -> EvaluatedPosition
 calculateBestLocalEvalPos particles = bestParticleEvalPos $ VG.minimumBy (comparing $ value . bestParticleEvalPos) particles
@@ -179,9 +192,9 @@ maybeUpdateBestLocal maybeNewBestLocalEvalPos = VG.map maybeUpdateBestLocalParti
                                   then maybeNewBestLocalEvalPos
                                   else bestLocalEvalPos particle
 
-updateSwarm :: PrimMonadPrim m => CostFunction -> Swarm -> Rand m Swarm
-updateSwarm costFunction (Swarm particles) = do
-    newParticles <- updateParticlesPosVel costFunction particles
+updateSwarm :: PrimMonadPrim m => Swarm -> Comp m Swarm
+updateSwarm (Swarm particles) = do
+    newParticles <- updateParticlesPosVel particles
     let maybeNewBestLocalEvalPos = calculateBestLocalEvalPos newParticles
         newParticlesWithBestLocal = maybeUpdateBestLocal maybeNewBestLocalEvalPos newParticles
     return $ pack newParticlesWithBestLocal
@@ -189,16 +202,17 @@ updateSwarm costFunction (Swarm particles) = do
 getBest :: Swarm -> Particle
 getBest swarm = unpack swarm & VG.minimumBy (comparing $ value . bestLocalEvalPos)
 
-optimize :: (MonadIO m, PrimMonadPrim m) => Integer -> CostFunction -> Swarm -> Comp m (Particle, Swarm)
-optimize epoch costFunction swarm = do
-    maxEpochs <- asks Config.epochsDef
-    newSwarm <- liftRand $ updateSwarm costFunction swarm
-    when (epoch `mod` 20 == 0) $ do
+optimize :: (MonadIO m, PrimMonadPrim m) => Integer -> Swarm -> Comp m (Particle, Swarm)
+optimize epoch swarm = do
+    maxEpochs <- asks $ Config.epochsDef    . config
+    logEpochs <- asks $ Config.logEpochsDef . config
+    newSwarm <- updateSwarm swarm
+    when (epoch `mod` logEpochs == 0) $ do
         let best = value . bestLocalEvalPos $ getBest newSwarm
         liftIO $ putText $ "Epoch: " <> show epoch <> " best: " <> show best
     -- putText $ "New swarm:\n" <> ppShow newSwarm
     if epoch < maxEpochs
-        then optimize (epoch + 1) costFunction newSwarm
+        then optimize (epoch + 1) newSwarm
         else return (getBest newSwarm, newSwarm)
 
 -- TODO
@@ -206,24 +220,23 @@ optimize epoch costFunction swarm = do
 
 -- Tests
 
-runComp :: PrimMonadPrim m => RM.Seed -> Config -> Integer -> Comp m a -> m a
+runComp :: PrimMonadPrim m => RM.Seed -> Env -> Integer -> Comp m a -> m a
 runComp seed cfg st comp = RM.runWithSeed seed $ evalStateT (runReaderT comp cfg) st
 
-computation :: (PrimMonadPrim m, MonadIO m) => CostFunction -> Comp m (Particle, Swarm)
-computation costFunction = do
-    swarmSize <- asks Config.swarmSize
-    initialSwarm <- liftRand $ genSwarm swarmSize costFunction
+computation :: (PrimMonadPrim m, MonadIO m) =>  Comp m (Particle, Swarm)
+computation = do
+    initialSwarm <- genSwarm
     -- liftIO $ putText $ "Initial swarm:\n" <> ppShow initialSwarm
-    optimize 0 costFunction initialSwarm
+    optimize 0 initialSwarm
 
 test :: Config -> IO ()
 test cfg = do
     seedNum <- Config.seedDef cfg
     let genSeed = RM.toSeed $ VU.singleton seedNum
-        costFunction = F.rastrigin $ Config.dimension cfg
-    (result, _finalSwarm) <- runComp genSeed cfg 0 $ computation costFunction
+        costFun = F.rastrigin $ Config.dimension cfg
+    (result, _finalSwarm) <- runComp genSeed (Env cfg costFun) 0 computation
     -- putText $ "Result:\n" <> (renderStyle mystyle $ ppDoc result)
     -- putText $ "Final swarm:\n" <> ppShow finalSwarm
     putText $ "Best result:\n" <> ppShow (value $ bestLocalEvalPos result)
     putText $ "Seed: " <> ppShow seedNum
-    -- putText $ "Cost function bounds:\n" <> ppShow (F.boundsVector costFunction)
+    -- putText $ "Cost function bounds:\n" <> ppShow (F.boundsVector costFun)

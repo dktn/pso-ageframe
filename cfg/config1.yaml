@@ -3,4 +3,4 @@ seed: 1
 dimension: 100
 swarmSize: 100
 epochs: 1000
-logEpochs: 50
+logEpochs: 25

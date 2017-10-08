@@ -59,6 +59,7 @@ executables:
       - -rtsopts
       - -with-rtsopts=-N
       - -with-rtsopts=-T
+      - -O1
   pso-ageframe-bench:
     main:             Benchmark.hs
     source-dirs:      bench
