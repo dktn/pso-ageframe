@@ -4,6 +4,8 @@
 module Config
     ( loadConfig
     , Config(..)
+    , epochsDef
+    , logEpochsDef
     ) where
 
 import           Protolude
@@ -18,7 +20,14 @@ data Config = Config { input      :: Text
                      , dimension  :: Int
                      , swarmSize  :: Int
                      , epochs     :: Maybe Integer
+                     , logEpochs  :: Maybe Integer
                      } deriving (Eq, Show, Generic, FromJSON)
+
+epochsDef :: Config -> Integer
+epochsDef = fromMaybe 100 . epochs
+
+logEpochsDef :: Config -> Integer
+logEpochsDef = fromMaybe 10 . logEpochs
 
 loadConfig :: Text -> IO (Either Text Config)
 loadConfig = decodeYaml

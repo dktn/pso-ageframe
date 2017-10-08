@@ -75,10 +75,10 @@ genVelocity :: RandMonad m => BoundsVector -> Rand m Velocity
 genVelocity = genVectorFor Velocity
 
 calculateEvalPos :: Evaluator -> Position -> EvaluatedPosition
-calculateEvalPos evaluator position = EvaluatedPosition position $ evalCost evaluator position
+calculateEvalPos evaluator pos = EvaluatedPosition pos $ evalCost evaluator pos
   where
     evalCost :: Evaluator -> Position -> Value
-    evalCost (Evaluator eval) (Position pos) = Value $ eval pos
+    evalCost (Evaluator e) (Position p) = Value $ e p
 
 genVelocityBounds :: BoundsVector -> BoundsVector
 genVelocityBounds (BoundsVector bounds) = BoundsVector $ toVelocityBound <$> bounds
@@ -86,9 +86,9 @@ genVelocityBounds (BoundsVector bounds) = BoundsVector $ toVelocityBound <$> bou
     toVelocityBound (Bounds l u) = let range = abs $ u - l in Bounds (-range) range
 
 genParticle :: RandMonad m => BoundsVector -> EvaluatedPosition -> EvaluatedPosition -> Rand m Particle
-genParticle boundsVector bestLocalEvalPos evalPos = do
+genParticle boundsVector bestLocalEvalPosition evalPos = do
     vel <- genVelocity $ genVelocityBounds boundsVector
-    return $ Particle vel evalPos evalPos bestLocalEvalPos
+    return $ Particle vel evalPos evalPos bestLocalEvalPosition
 
 genEvaluatedPosition :: RandMonad m => CostFunction -> Rand m EvaluatedPosition
 genEvaluatedPosition costFunction = do
@@ -98,19 +98,19 @@ genEvaluatedPosition costFunction = do
 genSwarm :: RandMonad m => Int -> CostFunction -> Rand m Swarm
 genSwarm swarmSize costFunction = do
     evaluatedPositions <- VG.replicateM swarmSize $ genEvaluatedPosition costFunction
-    let bestLocalEvalPos = VG.minimumBy (comparing value) evaluatedPositions
-    fmap Swarm . forM evaluatedPositions $ genParticle (F.boundsVector costFunction) bestLocalEvalPos
+    let bestLocalEvalPosition = VG.minimumBy (comparing value) evaluatedPositions
+    fmap Swarm . forM evaluatedPositions $ genParticle (F.boundsVector costFunction) bestLocalEvalPosition
 
 -- Optimization
 
 data Params a = Params
-    { omega :: a
-    , phiP  :: a
-    , phiL  :: a
+    { paramOmega :: a
+    , paramPhiP  :: a
+    , paramPhiL  :: a
     } deriving (Show)
 
 globalParams :: Params Double
-globalParams = Params { omega = 0.729, phiP = 1.49445, phiL = 1.49445 }
+globalParams = Params { paramOmega = 0.729, paramPhiP = 1.49445, paramPhiL = 1.49445 }
 
 rRange :: (Double, Double)
 rRange = (0, 1)
@@ -191,7 +191,7 @@ getBest swarm = unpack swarm & VG.minimumBy (comparing $ value . bestLocalEvalPo
 optimize :: (MonadIO m, RandMonad m) => Integer -> Integer -> CostFunction -> Swarm -> Rand m (Particle, Swarm)
 optimize epoch maxEpochs costFunction swarm = do
     newSwarm <- updateSwarm costFunction swarm
-    when (epoch `mod` 10 == 0) $ do
+    when (epoch `mod` 20 == 0) $ do
         let best = value . bestLocalEvalPos $ getBest newSwarm
         liftIO $ putText $ "Epoch: " <> show epoch <> " best: " <> show best
     -- putText $ "New swarm:\n" <> ppShow newSwarm
@@ -218,7 +218,7 @@ test cfg = do
     timeSeed <- getTimeSeed
     let seedNum = fromMaybe timeSeed $ Config.seed cfg
         genSeed = RM.toSeed $ VU.singleton seedNum
-        epochs = fromMaybe 100 $ Config.epochs cfg
+        epochs = Config.epochsDef cfg
         dim = Config.dimension cfg
         costFunction = F.rastrigin dim
     (result, finalSwarm) <- RM.runWithSeed genSeed $ do
