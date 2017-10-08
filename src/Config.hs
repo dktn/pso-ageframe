@@ -1,17 +1,18 @@
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE DeriveAnyClass #-}
 
 module Config
-    ( loadConfig
-    , Config(..)
+    ( Config(..)
+    , loadConfig
     , epochsDef
     , logEpochsDef
+    , seedDef
+    , genTimeSeed
     ) where
 
 import           Protolude
 import           Data.Text (Text)
 import           GHC.Word (Word32)
-
+import qualified Data.Time.Clock as Clock
 import           Data.Yaml
 
 
@@ -31,6 +32,16 @@ logEpochsDef = fromMaybe 10 . logEpochs
 
 loadConfig :: Text -> IO (Either Text Config)
 loadConfig = decodeYaml
+
+seedDef :: Config -> IO Word32
+seedDef cfg = do
+    timeSeed <- genTimeSeed
+    return . fromMaybe timeSeed $ Config.seed cfg
+
+genTimeSeed :: IO Word32
+genTimeSeed = do
+    now <- Clock.getCurrentTime
+    return . fromIntegral . Clock.diffTimeToPicoseconds $ Clock.utctDayTime now
 
 decodeYaml :: FromJSON a => Text -> IO (Either Text a)
 decodeYaml file = do

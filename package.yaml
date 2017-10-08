@@ -23,6 +23,7 @@ dependencies:
   - pretty
   - pretty-show
   - time
+  - mtl
 
   - deepseq
   - text

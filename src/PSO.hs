@@ -5,10 +5,8 @@ import           Data.Vector.Generic (Vector)
 import qualified Data.Vector.Generic as VG
 import qualified Data.Vector         as VB
 import qualified Data.Vector.Unboxed as VU
--- import qualified System.Random.MWC as R
 import           System.Random.MWC.Monad (Rand(..))
 import qualified System.Random.MWC.Monad as RM
--- import           Control.Monad.Primitive (PrimMonad, PrimState)
 import           Control.Monad.Primitive (PrimMonad)
 import           Control.Monad.Primitive.Class (MonadPrim)
 
@@ -19,8 +17,6 @@ import           Config (Config())
 import qualified Config
 import           Functions (CostFunction, Evaluator(..), BoundsVector(..), Bounds(..))
 import qualified Functions as F
-
-import qualified Data.Time.Clock as Clock
 
 
 newtype RandVector = RandVector (VU.Vector Double)
@@ -50,7 +46,12 @@ data Particle = Particle
 newtype Swarm = Swarm (VB.Vector Particle)
     deriving (Show, Generic, Newtype)
 
-type RandMonad m = (PrimMonad m, MonadPrim m)
+type PrimMonadPrim m = (PrimMonad m, MonadPrim m)
+
+type Comp m a = ReaderT Config (StateT Integer (Rand m)) a
+
+liftRand :: (MonadPrim m) => Rand m a -> Comp m a
+liftRand = lift . lift
 
 -- Lenses
 
@@ -61,17 +62,17 @@ bestLocalPos    = position . bestLocalEvalPos
 
 -- Generators
 
-genVectorFor :: RandMonad m => (VU.Vector Double -> a) -> BoundsVector -> Rand m a
+genVectorFor :: PrimMonadPrim m => (VU.Vector Double -> a) -> BoundsVector -> Rand m a
 genVectorFor cons (BoundsVector boundsVector) = do
     vecB <- forM boundsVector createVec
     return . cons $ VG.convert vecB
   where
     createVec (Bounds l u) = RM.uniformR (l, u)
 
-genPosition :: RandMonad m => BoundsVector -> Rand m Position
+genPosition :: PrimMonadPrim m => BoundsVector -> Rand m Position
 genPosition = genVectorFor Position
 
-genVelocity :: RandMonad m => BoundsVector -> Rand m Velocity
+genVelocity :: PrimMonadPrim m => BoundsVector -> Rand m Velocity
 genVelocity = genVectorFor Velocity
 
 calculateEvalPos :: Evaluator -> Position -> EvaluatedPosition
@@ -85,17 +86,17 @@ genVelocityBounds (BoundsVector bounds) = BoundsVector $ toVelocityBound <$> bou
   where
     toVelocityBound (Bounds l u) = let range = abs $ u - l in Bounds (-range) range
 
-genParticle :: RandMonad m => BoundsVector -> EvaluatedPosition -> EvaluatedPosition -> Rand m Particle
+genParticle :: PrimMonadPrim m => BoundsVector -> EvaluatedPosition -> EvaluatedPosition -> Rand m Particle
 genParticle boundsVector bestLocalEvalPosition evalPos = do
     vel <- genVelocity $ genVelocityBounds boundsVector
     return $ Particle vel evalPos evalPos bestLocalEvalPosition
 
-genEvaluatedPosition :: RandMonad m => CostFunction -> Rand m EvaluatedPosition
+genEvaluatedPosition :: PrimMonadPrim m => CostFunction -> Rand m EvaluatedPosition
 genEvaluatedPosition costFunction = do
     pos <- genPosition $ F.boundsVector costFunction
     return $ calculateEvalPos (F.evaluator costFunction) pos
 
-genSwarm :: RandMonad m => Int -> CostFunction -> Rand m Swarm
+genSwarm :: PrimMonadPrim m => Int -> CostFunction -> Rand m Swarm
 genSwarm swarmSize costFunction = do
     evaluatedPositions <- VG.replicateM swarmSize $ genEvaluatedPosition costFunction
     let bestLocalEvalPosition = VG.minimumBy (comparing value) evaluatedPositions
@@ -154,7 +155,7 @@ updateParticleVelPosEval evaluator rPV rLV particle = particle { particleVelocit
     calcVelocityI (Params omega phiP phiL) rP rL v pos bestPPos bestLPos = omega * v + rP * phiP * (bestPPos - pos) + rL * phiL * (bestLPos - pos)
     -- v ← ωv + φp rp (p-x) + φg rg (g-x)
 
-updateParticlePosVel :: RandMonad m => CostFunction -> Particle -> Rand m Particle
+updateParticlePosVel :: PrimMonadPrim m => CostFunction -> Particle -> Rand m Particle
 updateParticlePosVel costFunction particle = do
     let dim = unpack $ F.dimension costFunction
     rPV <- fmap RandVector $ VU.replicateM dim $ RM.uniformR rRange
@@ -162,7 +163,7 @@ updateParticlePosVel costFunction particle = do
     let newParticle = updateParticleVelPosEval (F.evaluator costFunction) rPV rLV particle
     return newParticle
 
-updateParticlesPosVel :: (Vector v Particle, RandMonad m) => CostFunction -> v Particle -> Rand m (v Particle)
+updateParticlesPosVel :: (Vector v Particle, PrimMonadPrim m) => CostFunction -> v Particle -> Rand m (v Particle)
 updateParticlesPosVel costFunction particles = VG.forM particles $ updateParticlePosVel costFunction
 
 calculateBestLocalEvalPos :: Vector v Particle => v Particle -> EvaluatedPosition
@@ -178,7 +179,7 @@ maybeUpdateBestLocal maybeNewBestLocalEvalPos = VG.map maybeUpdateBestLocalParti
                                   then maybeNewBestLocalEvalPos
                                   else bestLocalEvalPos particle
 
-updateSwarm :: RandMonad m => CostFunction -> Swarm -> Rand m Swarm
+updateSwarm :: PrimMonadPrim m => CostFunction -> Swarm -> Rand m Swarm
 updateSwarm costFunction (Swarm particles) = do
     newParticles <- updateParticlesPosVel costFunction particles
     let maybeNewBestLocalEvalPos = calculateBestLocalEvalPos newParticles
@@ -188,43 +189,39 @@ updateSwarm costFunction (Swarm particles) = do
 getBest :: Swarm -> Particle
 getBest swarm = unpack swarm & VG.minimumBy (comparing $ value . bestLocalEvalPos)
 
-optimize :: (MonadIO m, RandMonad m) => Integer -> Integer -> CostFunction -> Swarm -> Rand m (Particle, Swarm)
-optimize epoch maxEpochs costFunction swarm = do
-    newSwarm <- updateSwarm costFunction swarm
+optimize :: (MonadIO m, PrimMonadPrim m) => Integer -> CostFunction -> Swarm -> Comp m (Particle, Swarm)
+optimize epoch costFunction swarm = do
+    maxEpochs <- asks Config.epochsDef
+    newSwarm <- liftRand $ updateSwarm costFunction swarm
     when (epoch `mod` 20 == 0) $ do
         let best = value . bestLocalEvalPos $ getBest newSwarm
         liftIO $ putText $ "Epoch: " <> show epoch <> " best: " <> show best
     -- putText $ "New swarm:\n" <> ppShow newSwarm
     if epoch < maxEpochs
-        then optimize (epoch + 1) maxEpochs costFunction newSwarm
+        then optimize (epoch + 1) costFunction newSwarm
         else return (getBest newSwarm, newSwarm)
 
-runOptimization :: (MonadIO m, RandMonad m) => Integer -> CostFunction -> Swarm -> Rand m (Particle, Swarm)
-runOptimization = optimize 0
+-- TODO
+-- thaw
 
 -- Tests
 
-getTimeSeed :: IO Word32
-getTimeSeed = do
-    now <- Clock.getCurrentTime
-    putStrLn (show (Clock.utctDay now) ++ "," ++ show (Clock.utctDayTime now))
-    -- putStrLn (show (utcToZonedTime utc now :: ZonedTime))
-    -- putStrLn (show (utcToZonedTime myzone now :: ZonedTime))
-    let timeSeed = fromIntegral . Clock.diffTimeToPicoseconds $ Clock.utctDayTime now
-    return timeSeed
+runComp :: PrimMonadPrim m => RM.Seed -> Config -> Integer -> Comp m a -> m a
+runComp seed cfg st comp = RM.runWithSeed seed $ evalStateT (runReaderT comp cfg) st
+
+computation :: (PrimMonadPrim m, MonadIO m) => CostFunction -> Comp m (Particle, Swarm)
+computation costFunction = do
+    swarmSize <- asks Config.swarmSize
+    initialSwarm <- liftRand $ genSwarm swarmSize costFunction
+    -- liftIO $ putText $ "Initial swarm:\n" <> ppShow initialSwarm
+    optimize 0 costFunction initialSwarm
 
 test :: Config -> IO ()
 test cfg = do
-    timeSeed <- getTimeSeed
-    let seedNum = fromMaybe timeSeed $ Config.seed cfg
-        genSeed = RM.toSeed $ VU.singleton seedNum
-        epochs = Config.epochsDef cfg
-        dim = Config.dimension cfg
-        costFunction = F.rastrigin dim
-    (result, finalSwarm) <- RM.runWithSeed genSeed $ do
-        initialSwarm <- genSwarm (Config.swarmSize cfg) costFunction
-        -- liftIO $ putText $ "Initial swarm:\n" <> ppShow initialSwarm
-        runOptimization epochs costFunction initialSwarm
+    seedNum <- Config.seedDef cfg
+    let genSeed = RM.toSeed $ VU.singleton seedNum
+        costFunction = F.rastrigin $ Config.dimension cfg
+    (result, _finalSwarm) <- runComp genSeed cfg 0 $ computation costFunction
     -- putText $ "Result:\n" <> (renderStyle mystyle $ ppDoc result)
     -- putText $ "Final swarm:\n" <> ppShow finalSwarm
     putText $ "Best result:\n" <> ppShow (value $ bestLocalEvalPos result)
